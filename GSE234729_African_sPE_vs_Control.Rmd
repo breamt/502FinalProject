@@ -1,0 +1,422 @@
+
+```{r}
+# GSE234729: African ancestry, severe preeclampsia (sPE) vs Control
+# ADAPTED FROM: deseq2_pipeline_continued(2).R (classroom script)
+# IMPORTANT: uploaded file is already DESeq2-normalized, not raw integer counts.
+# We keep the SAME step order and variable names from class wherever possible.
+# PCA/plots use log2(normalized counts + 1); testing uses exploratory limma.
+# Do NOT run DESeqDataSetFromMatrix(), DESeq(), or lfcShrink() on these values.
+
+############################################################
+# Step 0: Install/load packages
+############################################################
+if (!requireNamespace('BiocManager', quietly=TRUE)) install.packages('BiocManager')
+for (p in c('GEOquery', 'limma')) {
+  if (!requireNamespace(p, quietly=TRUE)) BiocManager::install(p, update=FALSE, ask=FALSE)
+}
+for (p in c('ggplot2', 'pheatmap', 'ggrepel')) {
+  if (!requireNamespace(p, quietly=TRUE)) install.packages(p)
+}
+library(GEOquery)
+library(limma)
+library(ggplot2)
+library(pheatmap)
+library(ggrepel)
+
+############################################################
+# Step 1: Load the expression matrix (same role as counts in class)
+############################################################
+# Put the .txt data file in the RStudio working directory.
+input_file <- 'GSE234729_Plac_samples_diff_ancestry_Deseq2_norm_filtered.txt'
+stopifnot(file.exists(input_file))
+counts <- read.table(input_file, header=TRUE, row.names=1,
+                     sep='\t', check.names=FALSE, quote='', comment.char='')
+counts <- as.matrix(counts)
+storage.mode(counts) <- 'numeric'
+stopifnot(!anyNA(counts), all(counts >= 0), !anyDuplicated(colnames(counts)))
+head(counts[, 1:4])
+dim(counts)
+# NOTE: Name kept from class, but 'counts' contains NORMALIZED values here.
+
+############################################################
+############################################################
+# Step 2: Create Sample Metadata (coldata, as in class)
+# African Ancestry: Control vs Severe Preeclampsia
+############################################################
+
+# Load GEO metadata
+library(GEOquery)
+
+gse <- getGEO("GSE234729",
+              GSEMatrix = TRUE,
+              getGPL = FALSE)
+
+geo <- if (is.list(gse)) gse[[1]] else gse
+
+geo_info <- Biobase::pData(geo)
+
+# View metadata column names
+colnames(geo_info)
+
+# Identify sample characteristics
+char_cols <- grep(
+  "^characteristics_ch1",
+  colnames(geo_info),
+  value = TRUE
+)
+
+# Function to extract sample information
+get_field <- function(data, pattern) {
+  
+  vapply(seq_len(nrow(data)), function(i) {
+    
+    entry <- unlist(
+      data[i, char_cols, drop = FALSE],
+      use.names = FALSE
+    )
+    
+    entry <- entry[!is.na(entry)]
+    
+    hit <- grep(
+      pattern,
+      entry,
+      ignore.case = TRUE,
+      value = TRUE
+    )
+    
+    if (length(hit) == 0) {
+      return(NA_character_)
+    }
+    
+    trimws(sub("^[^:]+:", "", hit[1]))
+    
+  }, character(1))
+}
+
+############################################################
+# Create metadata dataframe
+############################################################
+
+coldata <- data.frame(
+  
+  sample = trimws(as.character(geo_info$title)),
+  
+  ancestry = get_field(
+    geo_info,
+    "maternal_ancestry_self_report"
+  ),
+  
+  disease = get_field(
+    geo_info,
+    "^disease:"
+  ),
+  
+  stringsAsFactors = FALSE
+)
+
+# Check ancestry and disease labels
+table(coldata$ancestry, useNA = "ifany")
+table(coldata$disease, useNA = "ifany")
+
+############################################################
+# Select African ancestry samples
+############################################################
+
+# Keep samples present in the expression matrix
+coldata <- subset(
+  coldata,
+  sample %in% colnames(counts) &
+    ancestry == "African"
+)
+
+# Assign control and sPE groups
+coldata$condition <- ifelse(
+  
+  coldata$disease == "Severe Preeclampsia",
+  "sPE",
+  
+  ifelse(
+    coldata$disease == "Non-hypertensive control",
+    "Control",
+    NA
+  )
+)
+
+# Check sample assignments
+print(coldata)
+
+# Remove samples with unrecognized conditions
+coldata <- coldata[!is.na(coldata$condition), ]
+
+# Set control as the reference group
+coldata$condition <- factor(
+  coldata$condition,
+  levels = c("Control", "sPE")
+)
+
+############################################################
+# Check sample numbers
+############################################################
+
+table(coldata$condition)
+
+# Expected:
+# Control = 10
+# sPE = 6
+
+stopifnot(
+  sum(coldata$condition == "Control") == 10,
+  sum(coldata$condition == "sPE") == 6
+)
+
+############################################################
+# Match metadata with expression matrix
+############################################################
+
+# Use sample names as row names
+rownames(coldata) <- coldata$sample
+
+# Keep only the selected samples in expression data
+counts <- counts[, rownames(coldata), drop = FALSE]
+
+# Confirm sample names match
+stopifnot(
+  identical(colnames(counts), rownames(coldata))
+)
+
+############################################################
+# Save sample information
+############################################################
+
+write.csv(
+  coldata,
+  "GSE234729_African_sample_metadata.csv",
+  row.names = FALSE
+)
+
+############################################################
+# Final verification
+############################################################
+
+cat("Step 2 completed successfully!\n")
+
+cat("African Controls:",
+    sum(coldata$condition == "Control"), "\n")
+
+cat("African sPE:",
+    sum(coldata$condition == "sPE"), "\n")
+
+cat("Total Samples:", ncol(counts), "\n")
+
+############################################################
+# Step 3: Check data instead of making a DESeq2 dataset
+############################################################
+# In class: dds <- DESeqDataSetFromMatrix(countData=counts, ...)
+# NOT APPROPRIATE HERE because uploaded counts are noninteger normalized values.
+summary(as.vector(counts))
+
+############################################################
+# Step 4: Normalized counts (already normalized by original authors)
+############################################################
+# In class: dds <- estimateSizeFactors(dds)
+# In this GEO file, normalization has ALREADY been performed.
+normalized_counts <- counts
+head(normalized_counts[,1:4])
+
+############################################################
+# Step 5: Raw vs normalized boxplot (only normalized available)
+############################################################
+boxplot(log2(normalized_counts + 1), main='Normalized Gene Expression',
+        ylab='log2(normalized counts + 1)', las=2, cex.axis=.6)
+# Raw-count boxplot cannot be generated from the provided file.
+
+############################################################
+# Step 6: Transformation for PCA (vsd role from class)
+############################################################
+# In class: vsd <- vst(dds)
+# Here: a log2 transform for exploratory plots, NOT DESeq2 VST.
+vsd <- log2(normalized_counts + 1)
+
+############################################################
+# Step 7: PCA plot (same concept as class)
+############################################################
+pca <- prcomp(t(vsd), center=TRUE)
+pca_data <- data.frame(name=rownames(pca$x), condition=coldata$condition,
+                       PC1=pca$x[,1], PC2=pca$x[,2])
+percentVar <- round(100*summary(pca)$importance[2,1:2], 1)
+p_pca <- ggplot(pca_data, aes(PC1,PC2,color=condition)) +
+  geom_point(size=4) + geom_text_repel(aes(label=name), max.overlaps=30) +
+  xlab(paste0('PC1: ',percentVar[1],'% variance')) +
+  ylab(paste0('PC2: ',percentVar[2],'% variance')) +
+  ggtitle('PCA: African ancestry sPE vs Control') + theme_minimal()
+print(p_pca)
+ggsave('African_PCA.png', p_pca, width=8,height=6,dpi=300)
+
+############################################################
+# Step 8: Sample-to-sample distance heatmap (same as class)
+############################################################
+sampleDists <- dist(t(vsd))
+sampleDistMatrix <- as.matrix(sampleDists)
+annotation <- data.frame(condition=coldata$condition, row.names=rownames(coldata))
+pheatmap(sampleDistMatrix, annotation_col=annotation, annotation_row=annotation,
+         main='Sample-to-Sample Distance Heatmap',
+         filename='African_sample_distance_heatmap.png', width=8,height=7)
+
+############################################################
+# Step 9: Set reference group and fit exploratory limma model
+############################################################
+# In class: dds$condition <- relevel(dds$condition, ref='Neuron'); dds <- DESeq(dds)
+coldata$condition <- relevel(coldata$condition, ref='Control')
+design <- model.matrix(~condition, data=coldata)
+fit <- lmFit(vsd, design)
+fit <- eBayes(fit)
+
+############################################################
+# Step 10: Check available comparisons (like resultsNames(dds))
+############################################################
+colnames(design)
+levels(coldata$condition)
+
+############################################################
+# Step 11: Extract results for sPE vs Control
+############################################################
+res <- topTable(fit, coef='conditionsPE', number=Inf, sort.by='P')
+# limma logFC>0: higher expression in sPE relative to Control.
+head(res)
+
+############################################################
+# Step 12: Order results by adjusted p-value
+############################################################
+res <- res[order(res$adj.P.Val), , drop=FALSE]
+head(res)
+
+############################################################
+# Step 13: Clean table without NA adjusted p-values
+############################################################
+res_clean <- res[!is.na(res$adj.P.Val), , drop=FALSE]
+head(res_clean)
+
+############################################################
+# Step 14: Log fold changes (no DESeq2 apeglm shrinkage)
+############################################################
+# In class: lfcShrink(dds, ... type='apeglm')
+# NOT possible on a normalized expression-only matrix.
+# limma already provides logFC from the exploratory linear model.
+res_shrunk_df <- res_clean  # Class-style name; NOT actually shrunk!
+
+############################################################
+# Step 15: Add human gene IDs and symbols
+############################################################
+res_shrunk_df$gene_id <- rownames(res_shrunk_df)
+res_shrunk_df$ensembl_id <- sub('\\$.*$', '', res_shrunk_df$gene_id)
+res_shrunk_df$gene_symbol <- sub('^.*\\$', '', res_shrunk_df$gene_id)
+res_shrunk_df$gene_symbol[res_shrunk_df$gene_symbol==''] <- res_shrunk_df$ensembl_id[res_shrunk_df$gene_symbol=='']
+head(res_shrunk_df[,c('gene_id','gene_symbol','logFC','adj.P.Val')])
+
+############################################################
+# Step 16: Define significance groups (same thresholds as class)
+############################################################
+res_shrunk_df$significance <- 'Not Significant'
+res_shrunk_df$significance[res_shrunk_df$adj.P.Val<0.05 & res_shrunk_df$logFC>1] <- 'Upregulated'
+res_shrunk_df$significance[res_shrunk_df$adj.P.Val<0.05 & res_shrunk_df$logFC< -1] <- 'Downregulated'
+table(res_shrunk_df$significance)
+
+############################################################
+# Step 17: Extract significant genes only
+############################################################
+sig_only <- subset(res_shrunk_df, adj.P.Val<0.05 & abs(logFC)>1)
+nrow(sig_only)
+head(sig_only)
+
+############################################################
+# Step 18: Select top up- and downregulated genes for labels
+############################################################
+res_shrunk_df$baseMean_log10 <- log10(rowMeans(normalized_counts[res_shrunk_df$gene_id,,drop=FALSE])+1)
+up_sig <- subset(sig_only, logFC>1)
+down_sig <- subset(sig_only, logFC< -1)
+top_up <- head(up_sig[order(up_sig$adj.P.Val),,drop=FALSE],5)
+top_down <- head(down_sig[order(down_sig$adj.P.Val),,drop=FALSE],5)
+top_labels <- rbind(top_up, top_down)
+
+############################################################
+# Step 19: MA-style plot (mean normalized expression vs logFC)
+############################################################
+p_ma <- ggplot(res_shrunk_df, aes(baseMean_log10, logFC, color=significance)) +
+ geom_point(alpha=.6) + geom_hline(yintercept=c(-1,1),linetype='dashed') +
+ labs(x='log10(Mean Normalized Expression + 1)',y='limma log2 fold change',
+      title='MA-style Plot: African sPE vs Control (exploratory)') + theme_minimal()
+print(p_ma)
+ggsave('African_MA_exploratory.png',p_ma,width=8,height=6,dpi=300)
+
+############################################################
+# Step 20: Volcano plot with all genes
+############################################################
+res_shrunk_df$neglog10padj <- -log10(pmax(res_shrunk_df$adj.P.Val,.Machine$double.xmin))
+top_labels$neglog10padj <- -log10(pmax(top_labels$adj.P.Val,.Machine$double.xmin))
+p_volcano <- ggplot(res_shrunk_df,aes(logFC,neglog10padj,color=significance)) +
+  geom_point(alpha=.6) + geom_vline(xintercept=c(-1,1),linetype='dashed') +
+  geom_hline(yintercept=-log10(.05),linetype='dashed') +
+  geom_text_repel(data=top_labels,aes(label=gene_symbol),size=3,max.overlaps=20) +
+  xlab('Log2 Fold Change (sPE vs Control)') + ylab('-Log10 Adjusted P-value') +
+  ggtitle('Volcano Plot: African sPE vs Control (exploratory)') + theme_minimal()
+print(p_volcano)
+ggsave('African_volcano_exploratory.png',p_volcano,width=9,height=6,dpi=300)
+
+############################################################
+# Step 21: Volcano plot significant genes only
+############################################################
+if (nrow(sig_only)>0) {
+ sig_only$neglog10padj <- -log10(pmax(sig_only$adj.P.Val,.Machine$double.xmin))
+ p_sig <- ggplot(sig_only,aes(logFC,neglog10padj,color=significance)) +
+   geom_point(alpha=.7) + ggtitle('Significant Genes Only (exploratory)') + theme_minimal()
+ print(p_sig)
+ ggsave('African_volcano_significant_only.png',p_sig,width=8,height=6,dpi=300)
+}
+
+############################################################
+# Step 22: View top significant genes
+############################################################
+top20_sig <- head(sig_only[order(sig_only$adj.P.Val),,drop=FALSE],20)
+print(top20_sig[,c('gene_symbol','logFC','adj.P.Val'),drop=FALSE])
+
+############################################################
+# Step 23: Heatmap of top significant genes
+############################################################
+if (nrow(sig_only)>0) {
+ top_genes <- head(rownames(sig_only),min(30,nrow(sig_only)))
+ mat <- vsd[top_genes,,drop=FALSE]
+ mat_scaled <- t(scale(t(mat)))
+ mat_scaled[!is.finite(mat_scaled)] <- 0
+ row_labels <- sig_only[top_genes,'gene_symbol']
+ rownames(mat_scaled) <- make.unique(row_labels)
+ pheatmap(mat_scaled,annotation_col=annotation,main='Top Significant Genes Heatmap',
+          filename='African_top_genes_heatmap.png',width=9,height=8)
+} else {
+ message('No genes met the selected thresholds; no significant-gene heatmap saved.')
+}
+
+############################################################
+# Step 24: Save results
+############################################################
+write.csv(res_shrunk_df,'African_sPE_vs_Control_ALL_genes_EXPLORATORY.csv',row.names=FALSE)
+write.csv(sig_only,'African_sPE_vs_Control_significant_genes_EXPLORATORY.csv',row.names=FALSE)
+write.csv(top20_sig,'African_sPE_vs_Control_top20_EXPLORATORY.csv',row.names=FALSE)
+
+############################################################
+# Step 25: Extra protein-assignment plots (FLT1, LEP, IL3RA)
+############################################################
+for (gene in c('FLT1','LEP','IL3RA')) {
+ idx <- which(sub('^.*\\$','',rownames(vsd))==gene)
+ if (length(idx)!=1) { message('Skipping ',gene,': gene symbol not unique/present.'); next }
+ gene_df <- data.frame(condition=coldata$condition, expression=as.numeric(vsd[idx,]))
+ p_gene <- ggplot(gene_df,aes(condition,expression,color=condition)) +
+   geom_boxplot(outlier.shape=NA,width=.5) + geom_jitter(width=.1,size=2) +
+   xlab('Condition') + ylab('log2(normalized expression + 1)') +
+   ggtitle(paste(gene,'expression: African ancestry')) + theme_minimal()
+ print(p_gene)
+ ggsave(paste0('African_',gene,'_expression.png'),p_gene,width=5,height=4,dpi=300)
+}
+
+message('Completed exploratory analysis. For formal DESeq2, obtain raw integer counts.')
+```
+
