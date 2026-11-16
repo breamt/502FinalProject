@@ -1,1 +1,106 @@
+# Step 1. Retrieve the human FLT1 protein sequence
+  1. Open UniProt: https://www.uniprot.org/uniprotkb/P17948/entry
+  2. Search for P17948.
+  3. Open the protein entry.
+  4. Locate the FASTA sequence.
+  5. Download the FASTA file.
 
+# Step 2. Download the AlphaFold structure
+  1. Open the AlphaFold database entry for P17948: https://alphafold.ebi.ac.uk/search/text/P17948
+  2. Locate the 3D protein structure.
+  3. Download the structure in PDB format if available, or mmCIF if that is the offered format.
+  4. Save it as: human_FLT1_AlphaFold.pdb
+
+# Step 3. Install and open PyMOL
+Refer to the Software_Requirements.txt file for download instructions.
+  1. After installation, open PYMOL.
+  2. Locate the downloaded human_FLT1_AlphaFold.pdb file.
+  Load it using the command line:
+load human_FLT1_AlphaFold.pdb, flt1_full
+  If your downloaded file is in another folder, provide its full file path.
+  For example, on Windows:
+load C:/Users/YourName/Downloads/human_FLT1_AlphaFold.pdb, flt1_full
+  You should now see your FLT1 protein structure.
+
+# Step 4. Visualize the full-length FLT1 structure
+  Enter these commands one at a time:
+hide everything
+show cartoon, flt1_full
+color cyan, flt1_full
+bg_color white
+orient flt1_full
+
+# Step 5. Isolate the extracellular domain of FLT1
+  # Select extracellular FLT1
+select flt1_ECD, flt1_full and resi 27-758
+
+  # Create a separate object
+create flt1_extracellular, flt1_ECD
+
+  # Display the extracellular region
+hide everything
+
+show cartoon, flt1_extracellular
+
+color marine, flt1_extracellular
+
+bg_color white
+
+orient flt1_extracellular
+
+# Step 5.1 Check the residue count:
+count_atoms flt1_extracellular and name CA
+
+# Step 6. Isolate the VEGF-binding region
+  # Replace the example boundaries with
+  # the verified UniProt domain boundaries
+
+select flt1_D2, flt1_extracellular and resi START2-END2
+
+select flt1_D3, flt1_extracellular and resi START3-END3
+
+show cartoon, flt1_D2 or flt1_D3
+
+color orange, flt1_D2
+
+color green, flt1_D3
+
+orient flt1_D2 or flt1_D3
+
+#Step 6.1 Examine the solvent-exposed surface:
+show surface, flt1_D2 or flt1_D3
+
+set transparency, 0.25
+
+# Step 7. Visualize AlphaFold confidence scores
+hide everything
+show cartoon, flt1_full
+spectrum b, red_yellow_green, flt1_full, minimum=50, maximum=100
+bg_color white
+orient flt1_full
+
+# Step 8. Examine the secondary structure of FLT1
+dss flt1_extracellular
+hide everything
+show cartoon, flt1_extracellular
+color gray80, flt1_extracellular
+color red, flt1_extracellular and ss H
+color yellow, flt1_extracellular and ss S
+color green, flt1_extracellular and ss L
+bg_color white
+
+orient flt1_extracellular
+
+# Step 9. Save your mature LEP structure and PYMOL session
+  # Save full-length receptor
+save human_FLT1_full.pdb, flt1_full
+  # Save extracellular domain
+save human_FLT1_ECD.pdb, flt1_extracellular
+  # Save PyMOL session
+save human_FLT1_analysis.pse
+
+# Step 10. Generate a high-resolution image of the protein structure
+bg_color white
+set ray_opaque_background, off
+ray 2000, 2000
+png human_FLT1_ECD.png, dpi=300
