@@ -1,0 +1,6 @@
+Link to download PYMOL 3.1: https://www.pymol.org/
+Select the package for your device OS (Windows, Mac, or Linux)
+After downloading, register as a student for free access
+
+Link to download RStudio Desktop: https://posit.co/downloads
+Select the Open Source 2026 Edition (AGPL v3) that is Free
