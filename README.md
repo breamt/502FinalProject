@@ -3,7 +3,7 @@ Reproducible code and dataset for final project. Includes optional Part 1: R-Cod
 # Part 1 Differential Expression analysis
 This step is OPTIONAL and not required to complete the computational analysis in Part 2. If you would like to run the DE gene analysis:
 1. Download the attached "GSE234729_all_available_GEO_metadata.csv" file.
-2. Then download R Studio Desktop, and run the attached R markdown (rmd) code. The code generates output for African ancestry.
+2. Then download R Studio Desktop, and run the attached R markdown (GSE234729_African_sPE_vs_Control.rmd) code. The code generates output for African ancestry.
 3. If you would like to do DE analysis for other sample groups replace all instances of "African" in the original code with "Asian" and repeat runs, then replace those instances with "European" and run the workflow again for a total of three outputs.
 # Part 2 Protein structural analysis
 PYMOL download is required.
